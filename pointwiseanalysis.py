@@ -8,12 +8,13 @@ import pandas as pd
 
 class PointwiseAnalysis:
 
-    def __init__(self, timeseries, freq):
+    def __init__(self, timeseries, freq, seasonality='weekly'):
 
         self.freq = freq
         self.timeseries = timeseries
-        self.df = timeseries.to_frame().reset_index()  # create dataframe from given timeseries
-        self.df.columns = ['time', 'value']   # add column names to dataframe
+        self.seasonality = seasonality
+        self.df = timeseries.to_frame().reset_index() 
+        self.df.columns = ['time', 'value'] 
         self.preprocess()
         self._exec()
 
@@ -28,24 +29,28 @@ class PointwiseAnalysis:
         return d.datetime.strptime(row['time'], '%d.%m.%Y %H:%M').date().strftime("%A").lower()
 
     def _exec(self):
-        days = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday']
-        all_days = []
-        for day in days:
-            day = day.lower()
-            self.df['day'] = self.df[['time']].apply(self.add_day_column, axis=1)
-            day_df = self.df[self.df['day'] == day].reset_index()
-            day_df.columns = ['oi', 'time', 'value', 'diff', 'med', 'diff_med', 'day']
-            day_df = self._qd(day_df)
-            day_df = self._diff_qd(day_df)
-            all_days.append(day_df)
+        if self.seasonality == 'weekly':
+            days = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday']
+            all_days = []
+            for day in days:
+                day = day.lower()
+                self.df['day'] = self.df[['time']].apply(self.add_day_column, axis=1)
+                day_df = self.df[self.df['day'] == day].reset_index()
+                day_df.columns = ['oi', 'time', 'value', 'diff', 'med', 'diff_med', 'day']
+                day_df = self.calculate_weekly_median(day_df)
+                day_df = self.calculate_weekly_median_diff(day_df)
+                all_days.append(day_df)
+            
+            self.new_df = pd.concat(all_days)
+            self.new_df = self.new_df.sort_values('oi').set_index('oi').reset_index(drop=True)
         
-        self.new_df = pd.concat(all_days)
-        self.new_df = self.new_df.sort_values('oi').set_index('oi').reset_index(drop=True)
+        else:
+            pass
 
     def add_interval_column(self, row): 
         return str(row['time']).split(" ")[1]
         
-    def _qd(self, day_df):
+    def calculate_weekly_median(self, day_df):
         day_df['interval'] = day_df[['time']].apply(self.add_interval_column, axis=1)
         intervals = day_df['interval'].unique().tolist()
         all_intervals = []
@@ -58,7 +63,7 @@ class PointwiseAnalysis:
         day_df = pd.concat(all_intervals)
         return day_df.sort_index()
 
-    def _diff_qd(self, day_df):
+    def calculate_weekly_median_diff(self, day_df):
         day_df['interval'] = day_df[['time']].apply(self.add_interval_column, axis=1)
         intervals = day_df['interval'].unique().tolist()
         all_intervals = []
